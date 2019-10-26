@@ -50,6 +50,10 @@ kernel void exclusive_scan(device int32_t* data [[buffer(0)]],
         }
         stride <<= 1;
     }
+    
+    // Without this barrier, setting tg_mem[-1] to 0 may not be properly
+    // propagated across the entire threadgroup.
+    threadgroup_barrier(mem_flags::mem_threadgroup);
     // clear the last element
     if (tgid == 0) {
         tg_mem[kThreadgroupSize - 1] = 0;
@@ -68,6 +72,7 @@ kernel void exclusive_scan(device int32_t* data [[buffer(0)]],
         }
         stride = half_stride;
     }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
     if (tid < count) {
          data[tid] = tg_mem[tgid];
     }
