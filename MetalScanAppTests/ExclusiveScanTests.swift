@@ -65,7 +65,7 @@ class ExclusiveScanTests: XCTestCase {
         runTestScan(data)
     }
     
-    func testThreeiers() {
+    func testThreeTiers() {
         let data = generateData(count: kThreadsPerGroupCount * kThreadsPerGroupCount * 16)
         // Reduce the upper range, otherwise it may overflow
         dataGen = RandomDataGen(max: 10)
