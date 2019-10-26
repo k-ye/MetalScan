@@ -20,9 +20,9 @@ public class ExclusiveScan {
         var count: uint
     }
     
-    public init() {
-        device = MTLCreateSystemDefaultDevice()
-        commandQueue = device.makeCommandQueue()
+    public init(_ device: MTLDevice, _ commandQueue: MTLCommandQueue) {
+        self.device = device
+        self.commandQueue = commandQueue
         guard let mtlLib = device.makeDefaultLibrary(),
             let scanKernel = mtlLib.makeFunction(name: "exclusive_scan"),
             let addBlockSumKernel = mtlLib.makeFunction(name: "add_block_sum") else {

@@ -33,7 +33,9 @@ class ExclusiveScanTests: XCTestCase {
     private var dataGen: DataGenerator!
 
     override func setUp() {
-        es = ExclusiveScan()
+        let device = MTLCreateSystemDefaultDevice()!
+        let commandQueue = device.makeCommandQueue()!
+        es = ExclusiveScan(device, commandQueue)
         dataGen = RandomDataGen(max: 1000)
     }
 
