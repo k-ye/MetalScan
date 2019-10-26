@@ -9,8 +9,16 @@
 import XCTest
 import MetalScanApp
 
+fileprivate let kThreadsPerGroupCount = 256
+
 class ExclusiveScanTests: XCTestCase {
+    enum GenDataPolicy {
+        case Random
+        case OnlyOne  // Easier for debugging
+    }
+    
     var es: ExclusiveScan!
+    let policy: GenDataPolicy = .Random
 
     override func setUp() {
         es = ExclusiveScan()
@@ -25,7 +33,7 @@ class ExclusiveScanTests: XCTestCase {
     }
     
     func testSingleGroup() {
-        let data = generateData(count: 256)
+        let data = generateData(count: kThreadsPerGroupCount)
         runTestScan(data)
     }
     
@@ -35,15 +43,17 @@ class ExclusiveScanTests: XCTestCase {
     }
     
     func testTwoTiers() {
-        let data = generateData(count: 256 * 5)
+        let data = generateData(count: kThreadsPerGroupCount * 128)
         runTestScan(data)
     }
     
     private func runTestScan(_ data: [Int32]) {
         let validator = ScanIterator(data)
         let scanResult = es.scan(data: data)
-        for n in scanResult {
-            XCTAssertEqual(n, validator.next())
+        for (i, actual) in scanResult.enumerated() {
+            let expected = validator.next()
+            XCTAssertEqual(actual, expected,
+                           "i=\(i) expected=\(expected) actual=\(actual)")
         }
         XCTAssertTrue(validator.done)
     }
@@ -51,7 +61,14 @@ class ExclusiveScanTests: XCTestCase {
     private func generateData(count: Int) -> [Int32] {
         var data = [Int32](repeating: 0, count: count)
         for i in 0..<count {
-            data[i] = Int32.random(in: 0..<1000)
+            var val = Int32(0)
+            switch policy {
+            case .Random:
+                val = Int32.random(in: 0..<10000)
+            default:
+                val = 1
+            }
+            data[i] = val
         }
         return data
     }

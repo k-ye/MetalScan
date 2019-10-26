@@ -40,13 +40,7 @@ public class ExclusiveScan {
             else { fatalError("Cannot scan") }
         
         doScan(dataBuffer, count)
-        
-        let bound = dataBuffer.contents().bindMemory(to: Int32.self, capacity: count)
-        var result = [Int32](repeating: 0, count: count)
-        for i in 0..<count {
-            result[i] = bound[i]
-        }
-        return result
+        return toArray(dataBuffer, count)
     }
     
     private func doScan(_ dataBuffer: MTLBuffer, _ count: Int) {
@@ -59,9 +53,8 @@ public class ExclusiveScan {
         let threadgroupMtlSz = MTLSize(width: threadgroupsCount, height: 1, depth: 1)
         var constants = Constants(count: uint(count))
         guard let blockSumBuffer = device.makeBuffer(length: threadgroupsCount * MemoryLayout<Int32>.stride,
-                                                     options: []) else {
-                                                        fatalError("Cannot create blockSumBuffer")
-        }
+                                                     options: [])
+            else { fatalError("Cannot create blockSumBuffer") }
         
         scanEncoder.setComputePipelineState(scanPipelineState)
         scanEncoder.setBuffer(dataBuffer, offset: 0, index: 0)
@@ -91,5 +84,14 @@ public class ExclusiveScan {
         
         addBlockSumCmdBuffer.commit()
         addBlockSumCmdBuffer.waitUntilCompleted()
+    }
+    
+    private func toArray(_ buffer: MTLBuffer, _ count: Int) -> [Int32] {
+        let bound = buffer.contents().bindMemory(to: Int32.self, capacity: count)
+        var result = [Int32](repeating: 0, count: count)
+        for i in 0..<count {
+            result[i] = bound[i]
+        }
+        return result
     }
 }
