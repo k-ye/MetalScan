@@ -11,24 +11,37 @@ import MetalScanApp
 
 fileprivate let kThreadsPerGroupCount = 256
 
+fileprivate protocol DataGenerator {
+    func gen() -> Int32
+}
+
 class ExclusiveScanTests: XCTestCase {
-    enum GenDataPolicy {
-        case Random
-        case OnlyOne  // Easier for debugging
+    private class RandomDataGen : DataGenerator {
+        private let max: Int32
+        
+        init(max: Int32) {
+            self.max = max
+        }
+        func gen() -> Int32 { return Int32.random(in: 0..<max) }
+    }
+    private class OnlyOneGen : DataGenerator {
+        // Easier for debugging
+        func gen() -> Int32 { return 1 }
     }
     
-    var es: ExclusiveScan!
-    let policy: GenDataPolicy = .Random
+    private var es: ExclusiveScan!
+    private var dataGen: DataGenerator!
 
     override func setUp() {
         es = ExclusiveScan()
+        dataGen = RandomDataGen(max: 1000)
     }
 
     override func tearDown() {
     }
 
     func testBasic() {
-        let data: [Int32] = [1, 2, 3, 4]
+        let data: [Int32] = [1, 2, 3, 4, 5]
         runTestScan(data)
     }
     
@@ -47,6 +60,18 @@ class ExclusiveScanTests: XCTestCase {
         runTestScan(data)
     }
     
+    func testTwoTiers_NotPowerOfTwo() {
+        let data = generateData(count: kThreadsPerGroupCount * 128 + 233)
+        runTestScan(data)
+    }
+    
+    func testThreeiers() {
+        let data = generateData(count: kThreadsPerGroupCount * kThreadsPerGroupCount * 16)
+        // Reduce the upper range, otherwise it may overflow
+        dataGen = RandomDataGen(max: 10)
+        runTestScan(data)
+    }
+    
     private func runTestScan(_ data: [Int32]) {
         let validator = ScanIterator(data)
         let scanResult = es.scan(data: data)
@@ -61,14 +86,7 @@ class ExclusiveScanTests: XCTestCase {
     private func generateData(count: Int) -> [Int32] {
         var data = [Int32](repeating: 0, count: count)
         for i in 0..<count {
-            var val = Int32(0)
-            switch policy {
-            case .Random:
-                val = Int32.random(in: 0..<10000)
-            default:
-                val = 1
-            }
-            data[i] = val
+            data[i] = dataGen.gen()
         }
         return data
     }
