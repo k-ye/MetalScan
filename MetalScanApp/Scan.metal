@@ -31,14 +31,6 @@ kernel void exclusive_scan(device int32_t* data [[buffer(0)]],
     }
     // https://stackoverflow.com/questions/44660599/metal-mem-none-vs-mem-threadgroup
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    if (tgid == 0) {
-        // TODO: block_sum[gid] is just the last element in tg_mem after up-sweep
-        int bs = 0;
-        for (int n : tg_mem) {
-            bs += n;
-        }
-        block_sum[gid] = bs;
-    }
     
     // up-sweep
     uint stride = 2;
@@ -54,8 +46,9 @@ kernel void exclusive_scan(device int32_t* data [[buffer(0)]],
     // Without this barrier, setting tg_mem[-1] to 0 may not be properly
     // propagated across the entire threadgroup.
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    // clear the last element
     if (tgid == 0) {
+        // clear the last element
+        block_sum[gid] = tg_mem[kThreadgroupSize - 1];
         tg_mem[kThreadgroupSize - 1] = 0;
     }
     stride >>= 1;
