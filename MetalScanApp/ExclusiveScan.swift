@@ -39,13 +39,17 @@ public class ExclusiveScan {
                                                  options: [])
             else { fatalError("Cannot scan") }
         
-        doScan(dataBuffer, count)
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            fatalError("Cannot create command buffer")
+        }
+        doScan(commandBuffer, dataBuffer, count)
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
         return toArray(dataBuffer, count)
     }
     
-    private func doScan(_ dataBuffer: MTLBuffer, _ count: Int) {
-        guard let scanCmdBuffer = commandQueue.makeCommandBuffer(),
-            let scanEncoder = scanCmdBuffer.makeComputeCommandEncoder() else {
+    private func doScan(_ commandBuffer: MTLCommandBuffer, _ dataBuffer: MTLBuffer, _ count: Int) {
+        guard let scanEncoder = commandBuffer.makeComputeCommandEncoder() else {
             fatalError("Cannot launch scan kernel")
         }
         let threadsPerGroupMtlSz = MTLSizeMake(kThreadsPerGroupCount, 1, 1)
@@ -63,16 +67,12 @@ public class ExclusiveScan {
         scanEncoder.dispatchThreadgroups(threadgroupMtlSz, threadsPerThreadgroup: threadsPerGroupMtlSz)
         scanEncoder.endEncoding()
         
-        scanCmdBuffer.commit()
-        scanCmdBuffer.waitUntilCompleted()
-        
         if threadgroupsCount <= 1 {
             return
         }
         
-        doScan(blockSumBuffer, threadgroupsCount)
-        guard let addBlockSumCmdBuffer = commandQueue.makeCommandBuffer(),
-            let addBlockSumEncoder = addBlockSumCmdBuffer.makeComputeCommandEncoder() else {
+        doScan(commandBuffer, blockSumBuffer, threadgroupsCount)
+        guard let addBlockSumEncoder = commandBuffer.makeComputeCommandEncoder() else {
             fatalError("Cannot launch add_block_sum kernel")
         }
         addBlockSumEncoder.setComputePipelineState(addBlockSumPipelineState)
@@ -81,9 +81,6 @@ public class ExclusiveScan {
         addBlockSumEncoder.setBuffer(blockSumBuffer, offset: 0, index: 2)
         addBlockSumEncoder.dispatchThreadgroups(threadgroupMtlSz, threadsPerThreadgroup: threadsPerGroupMtlSz)
         addBlockSumEncoder.endEncoding()
-        
-        addBlockSumCmdBuffer.commit()
-        addBlockSumCmdBuffer.waitUntilCompleted()
     }
     
     private func toArray(_ buffer: MTLBuffer, _ count: Int) -> [Int32] {
