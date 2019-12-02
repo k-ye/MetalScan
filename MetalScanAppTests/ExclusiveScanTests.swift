@@ -9,10 +9,20 @@
 import XCTest
 import MetalScanApp
 
-fileprivate let kThreadsPerGroupCount = 256
+fileprivate let kThreadsPerGroupCount = 512
 
 fileprivate protocol DataGenerator {
-    func gen() -> Int32
+    func genPoint() -> Int32
+}
+
+extension DataGenerator {
+    func genData(count: Int) -> [Int32] {
+        var result = [Int32](repeating: 0, count: count)
+        for i in 0..<count {
+            result[i] = genPoint()
+        }
+        return result
+    }
 }
 
 class ExclusiveScanTests: XCTestCase {
@@ -22,24 +32,23 @@ class ExclusiveScanTests: XCTestCase {
         init(max: Int32) {
             self.max = max
         }
-        func gen() -> Int32 { return Int32.random(in: 0..<max) }
+        func genPoint() -> Int32 { return Int32.random(in: 0..<max) }
     }
     private class OnlyOneGen : DataGenerator {
         // Easier for debugging
-        func gen() -> Int32 { return 1 }
+        func genPoint() -> Int32 { return 1 }
     }
     
+    private var device: MTLDevice!
+    private var commandQueue: MTLCommandQueue!
     private var es: ExclusiveScan!
     private var dataGen: DataGenerator!
 
     override func setUp() {
-        let device = MTLCreateSystemDefaultDevice()!
-        let commandQueue = device.makeCommandQueue()!
+        device = MTLCreateSystemDefaultDevice()!
+        commandQueue = device.makeCommandQueue()!
         es = ExclusiveScan(device, commandQueue)
         dataGen = RandomDataGen(max: 1000)
-    }
-
-    override func tearDown() {
     }
 
     func testBasic() {
@@ -48,30 +57,72 @@ class ExclusiveScanTests: XCTestCase {
     }
     
     func testSingleGroup() {
-        let data = generateData(count: kThreadsPerGroupCount)
+        let data = dataGen.genData(count: kThreadsPerGroupCount)
         runTestScan(data)
     }
     
     func testSingleGroup_NotPowerOfTwo() {
-        let data = generateData(count: 233)
+        let data = dataGen.genData(count: 233)
         runTestScan(data)
     }
     
     func testTwoTiers() {
-        let data = generateData(count: kThreadsPerGroupCount * 128)
+        let data = dataGen.genData(count: kThreadsPerGroupCount * 128)
         runTestScan(data)
     }
     
     func testTwoTiers_NotPowerOfTwo() {
-        let data = generateData(count: kThreadsPerGroupCount * 128 + 233)
+        let data = dataGen.genData(count: kThreadsPerGroupCount * 128 + 233)
         runTestScan(data)
     }
     
+    func testTwoTiers_EnableBlockSumBuffers() {
+        let count = kThreadsPerGroupCount * 10 + 233
+        es = ExclusiveScan(inputCount: count, device, commandQueue)
+        // Run this multiple times to make sure the blockSumBuffers do not need
+        // reset every time we run the scan
+        for _ in 0..<50 {
+            let data = dataGen.genData(count: count)
+            runTestScan(data)
+        }
+    }
+    
     func testThreeTiers() {
-        let data = generateData(count: kThreadsPerGroupCount * kThreadsPerGroupCount * 16)
         // Reduce the upper range, otherwise it may overflow
         dataGen = RandomDataGen(max: 10)
+        let data = dataGen.genData(count: kThreadsPerGroupCount * kThreadsPerGroupCount * 4)
         runTestScan(data)
+    }
+    
+    func testThreeTiers_EnableBlockSumBuffers() {
+        dataGen = RandomDataGen(max: 10)
+        let count = kThreadsPerGroupCount * kThreadsPerGroupCount + 233
+        es = ExclusiveScan(inputCount: count, device, commandQueue)
+        // Run this multiple times to make sure the blockSumBuffers do not need
+        // reset every time we run the scan
+        for _ in 0..<5 {
+            let data = dataGen.genData(count: count)
+            runTestScan(data)
+        }
+    }
+    
+    func testScan_DisableBlockSumBuffers_BM() {
+        dataGen = RandomDataGen(max: 10)
+        let count = 500_000
+        self.measure {
+            let data = dataGen.genData(count: count)
+            let _ = es.scan(data: data)
+        }
+    }
+    
+    func testScan_EnableBlockSumBuffers_BM() {
+        dataGen = RandomDataGen(max: 10)
+        let count = 500_000
+        es = ExclusiveScan(inputCount: count, device, commandQueue)
+        self.measure {
+            let data = dataGen.genData(count: count)
+            let _ = es.scan(data: data)
+        }
     }
     
     private func runTestScan(_ data: [Int32]) {
@@ -83,14 +134,6 @@ class ExclusiveScanTests: XCTestCase {
                            "i=\(i) expected=\(expected) actual=\(actual)")
         }
         XCTAssertTrue(validator.done)
-    }
-    
-    private func generateData(count: Int) -> [Int32] {
-        var data = [Int32](repeating: 0, count: count)
-        for i in 0..<count {
-            data[i] = dataGen.gen()
-        }
-        return data
     }
     
     private class ScanIterator {

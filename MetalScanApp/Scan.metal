@@ -9,7 +9,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-constant constexpr size_t kThreadgroupSize = 256;
+constant constexpr size_t kThreadgroupSize = 512;
 
 struct Constants {
     uint count;

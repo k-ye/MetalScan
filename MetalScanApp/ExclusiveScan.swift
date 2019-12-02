@@ -8,9 +8,62 @@
 
 import Metal
 
-fileprivate let kThreadsPerGroupCount = 256
+fileprivate let kThreadsPerGroupCount = 512
+
+fileprivate class BlockSumBuffersProvider {
+    let isDynamic: Bool
+    private var _inputCount: Int = .zero
+    private var buffers = [MTLBuffer]()
+    
+    var inputCount: Int { get { return _inputCount } }
+    
+    init() {
+        isDynamic = true
+    }
+    
+    init(inputCount: Int, _ device: MTLDevice) {
+        isDynamic = false
+        self._inputCount = inputCount
+        buildBuffers(device)
+    }
+    
+    func matches(inputCount count: Int) -> Bool {
+        return count == _inputCount
+    }
+    
+    func set(inputCount: Int, _ device: MTLDevice) {
+        if !isDynamic {
+            fatalError("isDynamic=\(isDynamic)")
+        }
+        if inputCount == self._inputCount {
+            return
+        }
+        
+        self._inputCount = inputCount
+        buildBuffers(device)
+    }
+
+    
+    func getBuffer(at level: Int) -> MTLBuffer {
+        return buffers[level]
+    }
+    
+    private func buildBuffers(_ device: MTLDevice) {
+        buffers.removeAll()
+        var c = _inputCount
+        let s = MemoryLayout<Int32>.stride
+        while true {
+            c = (c + kThreadsPerGroupCount - 1) / kThreadsPerGroupCount
+            buffers.append(device.makeBuffer(length: c * s, options: [])!)
+            if c <= 1 {
+                break
+            }
+        }
+    }
+}
 
 public class ExclusiveScan {
+    private var bsbp: BlockSumBuffersProvider!
     private var device: MTLDevice!
     private var commandQueue: MTLCommandQueue!
     private var scanPipelineState: MTLComputePipelineState!
@@ -20,7 +73,17 @@ public class ExclusiveScan {
         var count: uint
     }
     
+    public init(inputCount: Int, _ device: MTLDevice, _ commandQueue: MTLCommandQueue) {
+        bsbp = BlockSumBuffersProvider(inputCount: inputCount, device)
+        initCommon(device, commandQueue)
+    }
+    
     public init(_ device: MTLDevice, _ commandQueue: MTLCommandQueue) {
+        bsbp = BlockSumBuffersProvider()
+        initCommon(device, commandQueue)
+    }
+    
+    private func initCommon(_ device: MTLDevice, _ commandQueue: MTLCommandQueue) {
         self.device = device
         self.commandQueue = commandQueue
         guard let mtlLib = device.makeDefaultLibrary(),
@@ -34,6 +97,11 @@ public class ExclusiveScan {
     
     public func scan(data: [Int32]) -> [Int32] {
         let count = data.count
+        if bsbp.isDynamic {
+            bsbp.set(inputCount: count, device)
+        } else if !bsbp.matches(inputCount: count) {
+            fatalError("Size mismatch, expected=\(bsbp.inputCount), actual=\(count)")
+        }
         guard let dataBuffer = device.makeBuffer(bytes: data,
                                                  length: count * MemoryLayout<Int32>.stride,
                                                  options: [])
@@ -42,13 +110,13 @@ public class ExclusiveScan {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             fatalError("Cannot create command buffer")
         }
-        doScan(commandBuffer, dataBuffer, count)
+        doScan(commandBuffer, dataBuffer, count, level: 0)
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
         return toArray(dataBuffer, count)
     }
     
-    private func doScan(_ commandBuffer: MTLCommandBuffer, _ dataBuffer: MTLBuffer, _ count: Int) {
+    private func doScan(_ commandBuffer: MTLCommandBuffer, _ dataBuffer: MTLBuffer, _ count: Int, level: Int) {
         guard let scanEncoder = commandBuffer.makeComputeCommandEncoder() else {
             fatalError("Cannot launch scan kernel")
         }
@@ -56,10 +124,10 @@ public class ExclusiveScan {
         let threadgroupsCount = (count + kThreadsPerGroupCount - 1) / kThreadsPerGroupCount
         let threadgroupMtlSz = MTLSize(width: threadgroupsCount, height: 1, depth: 1)
         var constants = Constants(count: uint(count))
-        guard let blockSumBuffer = device.makeBuffer(length: threadgroupsCount * MemoryLayout<Int32>.stride,
-                                                     options: [])
-            else { fatalError("Cannot create blockSumBuffer") }
-        
+//        guard let blockSumBuffer = device.makeBuffer(length: threadgroupsCount * MemoryLayout<Int32>.stride,
+//                                                     options: [])
+//            else { fatalError("Cannot create blockSumBuffer") }
+        let blockSumBuffer = bsbp.getBuffer(at: level)
         scanEncoder.setComputePipelineState(scanPipelineState)
         scanEncoder.setBuffer(dataBuffer, offset: 0, index: 0)
         scanEncoder.setBytes(&constants, length: MemoryLayout<Constants>.stride, index: 1)
@@ -71,7 +139,7 @@ public class ExclusiveScan {
             return
         }
         
-        doScan(commandBuffer, blockSumBuffer, threadgroupsCount)
+        doScan(commandBuffer, blockSumBuffer, threadgroupsCount, level: level + 1)
         guard let addBlockSumEncoder = commandBuffer.makeComputeCommandEncoder() else {
             fatalError("Cannot launch add_block_sum kernel")
         }
