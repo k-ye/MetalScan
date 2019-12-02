@@ -76,6 +76,14 @@ class ExclusiveScanTests: XCTestCase {
         runTestScan(data)
     }
     
+    
+    func testTwoTiers_DisableBlockSumBuffers() {
+        for i in 10...50 {
+            let data = dataGen.genData(count: kThreadsPerGroupCount * i + 233)
+            runTestScan(data)
+        }
+    }
+    
     func testTwoTiers_EnableBlockSumBuffers() {
         let count = kThreadsPerGroupCount * 10 + 233
         es = ExclusiveScan(inputCount: count, device, commandQueue)

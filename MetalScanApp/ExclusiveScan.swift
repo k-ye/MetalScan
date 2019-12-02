@@ -124,14 +124,13 @@ public class ExclusiveScan {
         let threadgroupsCount = (count + kThreadsPerGroupCount - 1) / kThreadsPerGroupCount
         let threadgroupMtlSz = MTLSize(width: threadgroupsCount, height: 1, depth: 1)
         var constants = Constants(count: uint(count))
-//        guard let blockSumBuffer = device.makeBuffer(length: threadgroupsCount * MemoryLayout<Int32>.stride,
-//                                                     options: [])
-//            else { fatalError("Cannot create blockSumBuffer") }
         let blockSumBuffer = bsbp.getBuffer(at: level)
         scanEncoder.setComputePipelineState(scanPipelineState)
         scanEncoder.setBuffer(dataBuffer, offset: 0, index: 0)
         scanEncoder.setBytes(&constants, length: MemoryLayout<Constants>.stride, index: 1)
         scanEncoder.setBuffer(blockSumBuffer, offset: 0, index: 2)
+        // https://stackoverflow.com/questions/43864136/metal-optimizing-memory-access
+        scanEncoder.setThreadgroupMemoryLength(MemoryLayout<Int32>.stride * kThreadsPerGroupCount, index: 0)
         scanEncoder.dispatchThreadgroups(threadgroupMtlSz, threadsPerThreadgroup: threadsPerGroupMtlSz)
         scanEncoder.endEncoding()
         

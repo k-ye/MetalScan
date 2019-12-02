@@ -9,21 +9,20 @@
 #include <metal_stdlib>
 using namespace metal;
 
-constant constexpr size_t kThreadgroupSize = 512;
-
 struct Constants {
     uint count;
 };
 
 kernel void exclusive_scan(device int32_t* data [[buffer(0)]],
-                           constant const Constants& c[[buffer(1)]],
+                           constant const Constants& c [[buffer(1)]],
                            device int32_t* block_sum [[buffer(2)]],
+                           threadgroup int32_t* tg_mem [[threadgroup(0)]],
                            uint tid [[thread_position_in_grid]],
                            uint tgid [[thread_position_in_threadgroup]],
-                           uint gid [[threadgroup_position_in_grid]]) {
+                           uint gid [[threadgroup_position_in_grid]],
+                           const uint threads_per_group [[threads_per_threadgroup]]) {
     // https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch39.html
     const uint count = c.count;
-    threadgroup int32_t tg_mem[kThreadgroupSize];
     if (tid < count) {
         tg_mem[tgid] = data[tid];
     } else {
@@ -34,7 +33,7 @@ kernel void exclusive_scan(device int32_t* data [[buffer(0)]],
     
     // up-sweep
     uint stride = 2;
-    while (stride <= kThreadgroupSize) {
+    while (stride <= threads_per_group) {
         threadgroup_barrier(mem_flags::mem_threadgroup);
         const uint half_stride = (stride >> 1);
         if (((tgid + 1) % stride) == 0) {
@@ -48,8 +47,8 @@ kernel void exclusive_scan(device int32_t* data [[buffer(0)]],
     threadgroup_barrier(mem_flags::mem_threadgroup);
     if (tgid == 0) {
         // clear the last element
-        block_sum[gid] = tg_mem[kThreadgroupSize - 1];
-        tg_mem[kThreadgroupSize - 1] = 0;
+        block_sum[gid] = tg_mem[threads_per_group - 1];
+        tg_mem[threads_per_group - 1] = 0;
     }
     stride >>= 1;
     
