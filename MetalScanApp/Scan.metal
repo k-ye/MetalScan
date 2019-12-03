@@ -9,14 +9,14 @@
 #include <metal_stdlib>
 using namespace metal;
 
-struct Constants {
+struct ScanConstants {
     uint count;
 };
 
 kernel void exclusive_scan(device const int32_t* input_data [[buffer(0)]],
                            device int32_t* output_data [[buffer(1)]],
                            device int32_t* block_sum [[buffer(2)]],
-                           constant const Constants& c [[buffer(3)]],
+                           constant const ScanConstants& c [[buffer(3)]],
                            threadgroup int32_t* tg_mem [[threadgroup(0)]],
                            uint tid [[thread_position_in_grid]],
                            uint tgid [[thread_position_in_threadgroup]],
@@ -73,7 +73,7 @@ kernel void exclusive_scan(device const int32_t* input_data [[buffer(0)]],
 
 kernel void add_block_sum(device const int32_t* block_sum [[buffer(0)]],
                           device int32_t* data [[buffer(1)]],
-                          constant const Constants& c[[buffer(2)]],
+                          constant const ScanConstants& c[[buffer(2)]],
                           uint tid [[thread_position_in_grid]],
                           uint gid [[threadgroup_position_in_grid]]) {
     if (tid < c.count) {
