@@ -7,7 +7,7 @@
 //
 
 import XCTest
-import MetalScanApp
+@testable import MetalScanApp
 
 fileprivate let kThreadsPerGroupCount = 512
 
@@ -47,7 +47,7 @@ class ExclusiveScanTests: XCTestCase {
     override func setUp() {
         device = MTLCreateSystemDefaultDevice()!
         commandQueue = device.makeCommandQueue()!
-        es = ExclusiveScan(device, commandQueue)
+        es = ExclusiveScan.makeDynamicCount(device)
         dataGen = RandomDataGen(max: 1000)
     }
 
@@ -86,7 +86,7 @@ class ExclusiveScanTests: XCTestCase {
     
     func testTwoTiers_EnableBlockSumBuffers() {
         let count = kThreadsPerGroupCount * 10 + 233
-        es = ExclusiveScan(inputCount: count, device, commandQueue)
+        es = ExclusiveScan.makeStaticCount(inputCount: count, device)
         // Run this multiple times to make sure the blockSumBuffers do not need
         // reset every time we run the scan
         for _ in 0..<50 {
@@ -105,7 +105,7 @@ class ExclusiveScanTests: XCTestCase {
     func testThreeTiers_EnableBlockSumBuffers() {
         dataGen = RandomDataGen(max: 10)
         let count = kThreadsPerGroupCount * kThreadsPerGroupCount + 233
-        es = ExclusiveScan(inputCount: count, device, commandQueue)
+        es = ExclusiveScan.makeStaticCount(inputCount: count, device)
         // Run this multiple times to make sure the blockSumBuffers do not need
         // reset every time we run the scan
         for _ in 0..<5 {
@@ -119,23 +119,23 @@ class ExclusiveScanTests: XCTestCase {
         let count = 500_000
         self.measure {
             let data = dataGen.genData(count: count)
-            let _ = es.scan(data: data)
+            let _ = es.scan(data: data, commandQueue)
         }
     }
     
     func testScan_EnableBlockSumBuffers_BM() {
         dataGen = RandomDataGen(max: 10)
         let count = 500_000
-        es = ExclusiveScan(inputCount: count, device, commandQueue)
+        es = ExclusiveScan.makeStaticCount(inputCount: count, device)
         self.measure {
             let data = dataGen.genData(count: count)
-            let _ = es.scan(data: data)
+            let _ = es.scan(data: data, commandQueue)
         }
     }
     
     private func runTestScan(_ data: [Int32]) {
         let validator = ScanIterator(data)
-        let scanResult = es.scan(data: data)
+        let scanResult = es.scan(data: data, commandQueue)
         for (i, actual) in scanResult.enumerated() {
             let expected = validator.next()
             XCTAssertEqual(actual, expected,

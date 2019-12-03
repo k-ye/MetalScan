@@ -16,6 +16,7 @@
 		213304D8236346C40000553B /* ExclusiveScan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 213304D7236346C40000553B /* ExclusiveScan.swift */; };
 		213304DA236346CD0000553B /* Scan.metal in Sources */ = {isa = PBXBuildFile; fileRef = 213304D9236346CD0000553B /* Scan.metal */; };
 		213304DC236346D70000553B /* ExclusiveScanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 213304DB236346D70000553B /* ExclusiveScanTests.swift */; };
+		213EF1ED23969113000D7A14 /* Mtl1DThreadGridParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 213EF1EC23969113000D7A14 /* Mtl1DThreadGridParams.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,6 +43,7 @@
 		213304D7236346C40000553B /* ExclusiveScan.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ExclusiveScan.swift; sourceTree = "<group>"; };
 		213304D9236346CD0000553B /* Scan.metal */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.metal; path = Scan.metal; sourceTree = "<group>"; };
 		213304DB236346D70000553B /* ExclusiveScanTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ExclusiveScanTests.swift; sourceTree = "<group>"; };
+		213EF1EC23969113000D7A14 /* Mtl1DThreadGridParams.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mtl1DThreadGridParams.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -83,13 +85,14 @@
 		213304AE236340F10000553B /* MetalScanApp */ = {
 			isa = PBXGroup;
 			children = (
+				213304B7236340F40000553B /* Preview Content */,
 				213304AF236340F10000553B /* AppDelegate.swift */,
 				213304B5236340F40000553B /* Assets.xcassets */,
 				213304B3236340F10000553B /* ContentView.swift */,
 				213304D7236346C40000553B /* ExclusiveScan.swift */,
 				213304BD236340F40000553B /* Info.plist */,
 				213304BA236340F40000553B /* LaunchScreen.storyboard */,
-				213304B7236340F40000553B /* Preview Content */,
+				213EF1EC23969113000D7A14 /* Mtl1DThreadGridParams.swift */,
 				213304D9236346CD0000553B /* Scan.metal */,
 				213304B1236340F10000553B /* SceneDelegate.swift */,
 			);
@@ -214,6 +217,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				213EF1ED23969113000D7A14 /* Mtl1DThreadGridParams.swift in Sources */,
 				213304B0236340F10000553B /* AppDelegate.swift in Sources */,
 				213304DA236346CD0000553B /* Scan.metal in Sources */,
 				213304B2236340F10000553B /* SceneDelegate.swift in Sources */,
