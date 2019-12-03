@@ -64,9 +64,13 @@ fileprivate class BlockSumBuffersProvider {
 
 public class ExclusiveScan {
     private let bsbp: BlockSumBuffersProvider
-    private var device: MTLDevice!
+    private var _device: MTLDevice!
+    public var device: MTLDevice { get { return _device } }
     private var scanPipelineState: MTLComputePipelineState!
     private var addBlockSumPipelineState: MTLComputePipelineState!
+    
+    public typealias DataType = Int32
+    public static let kDataStride = MemoryLayout<DataType>.stride
     
     private struct Constants {
         var count: uint
@@ -91,7 +95,7 @@ public class ExclusiveScan {
     }
     
     private func initCommon(_ device: MTLDevice) {
-        self.device = device
+        self._device = device
         guard let mtlLib = device.makeDefaultLibrary(),
             let scanKernel = mtlLib.makeFunction(name: "exclusive_scan"),
             let addBlockSumKernel = mtlLib.makeFunction(name: "add_block_sum") else {
@@ -101,31 +105,18 @@ public class ExclusiveScan {
         addBlockSumPipelineState = try! device.makeComputePipelineState(function: addBlockSumKernel)
     }
     
-    public func scan(data: MTLBuffer, count: Int, _ commandBuffer: MTLCommandBuffer) {
+    public func scan(inputBuffer: MTLBuffer, outputBuffer: MTLBuffer, count: Int, _ commandBuffer: MTLCommandBuffer) {
         if bsbp.isDynamic {
-            bsbp.set(inputCount: count, device)
+            bsbp.set(inputCount: count, _device)
         } else if !bsbp.matches(inputCount: count) {
             fatalError("Size mismatch, expected=\(bsbp.inputCount), actual=\(count)")
         }
-        doScan(commandBuffer, data, count, level: 0)
+        doScan(inputBuffer: inputBuffer, outputBuffer: outputBuffer, count: count, commandBuffer, level: 0)
     }
     
-    public func scan(data: [Int32], _ commandQueue: MTLCommandQueue) -> [Int32] {
-        let count = data.count
-        let commandBuffer = commandQueue.makeCommandBuffer()!
-        let dataBuffer = device.makeBuffer(bytes: data,
-                                           length: count * MemoryLayout<Int32>.stride,
-                                           options: [])!
-        scan(data: dataBuffer, count: count, commandBuffer)
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        return toArray(dataBuffer, count)
-    }
-    
-    private func doScan(_ commandBuffer: MTLCommandBuffer, _ dataBuffer: MTLBuffer, _ count: Int, level: Int) {
-        guard let scanEncoder = commandBuffer.makeComputeCommandEncoder() else {
-            fatalError("Cannot launch scan kernel")
-        }
+    private func doScan(inputBuffer: MTLBuffer, outputBuffer: MTLBuffer, count: Int,
+                        _ commandBuffer: MTLCommandBuffer, level: Int) {
+        let scanEncoder = commandBuffer.makeComputeCommandEncoder()!
         let threadgridParams = Mtl1DThreadGridParams.Builder()
             .set(count: count)
             .set(threadsPerGroupCount: kThreadsPerGroupCount)
@@ -134,9 +125,15 @@ public class ExclusiveScan {
         var constants = Constants(count: uint(count))
         let blockSumBuffer = bsbp.getBuffer(at: level)
         scanEncoder.setComputePipelineState(scanPipelineState)
-        scanEncoder.setBuffer(dataBuffer, offset: 0, index: 0)
-        scanEncoder.setBytes(&constants, length: MemoryLayout<Constants>.stride, index: 1)
+//        device const int32_t* input_data [[buffer(0)]],
+//        device int32_t* output_data [[buffer(1)]],
+//        device int32_t* block_sum [[buffer(2)]],
+//        constant const Constants& c [[buffer(3)]],
+//        threadgroup int32_t* tg_mem [[threadgroup(0)]],
+        scanEncoder.setBuffer(inputBuffer, offset: 0, index: 0)
+        scanEncoder.setBuffer(outputBuffer, offset: 0, index: 1)
         scanEncoder.setBuffer(blockSumBuffer, offset: 0, index: 2)
+        scanEncoder.setBytes(&constants, length: MemoryLayout<Constants>.stride, index: 3)
         // https://stackoverflow.com/questions/43864136/metal-optimizing-memory-access
         scanEncoder.setThreadgroupMemoryLength(MemoryLayout<Int32>.stride * kThreadsPerGroupCount, index: 0)
         threadgridParams.dispatch(scanEncoder)
@@ -147,24 +144,17 @@ public class ExclusiveScan {
             return
         }
         
-        doScan(commandBuffer, blockSumBuffer, threadgroupsCount, level: level + 1)
-        guard let addBlockSumEncoder = commandBuffer.makeComputeCommandEncoder() else {
-            fatalError("Cannot launch add_block_sum kernel")
-        }
+        doScan(inputBuffer: blockSumBuffer, outputBuffer: blockSumBuffer, count: threadgroupsCount,
+               commandBuffer, level: level + 1)
+        let addBlockSumEncoder = commandBuffer.makeComputeCommandEncoder()!
         addBlockSumEncoder.setComputePipelineState(addBlockSumPipelineState)
-        addBlockSumEncoder.setBuffer(dataBuffer, offset: 0, index: 0)
-        addBlockSumEncoder.setBytes(&constants, length: MemoryLayout<Constants>.stride, index: 1)
-        addBlockSumEncoder.setBuffer(blockSumBuffer, offset: 0, index: 2)
+//        device const int32_t* block_sum [[buffer(0)]],
+//        device int32_t* data [[buffer(1)]],
+//        constant const Constants& c[[buffer(2)]],
+        addBlockSumEncoder.setBuffer(blockSumBuffer, offset: 0, index: 0)
+        addBlockSumEncoder.setBuffer(outputBuffer, offset: 0, index: 1)
+        addBlockSumEncoder.setBytes(&constants, length: MemoryLayout<Constants>.stride, index: 2)
         threadgridParams.dispatch(addBlockSumEncoder)
         addBlockSumEncoder.endEncoding()
-    }
-    
-    private func toArray(_ buffer: MTLBuffer, _ count: Int) -> [Int32] {
-        let bound = buffer.contents().bindMemory(to: Int32.self, capacity: count)
-        var result = [Int32](repeating: 0, count: count)
-        for i in 0..<count {
-            result[i] = bound[i]
-        }
-        return result
     }
 }

@@ -13,9 +13,10 @@ struct Constants {
     uint count;
 };
 
-kernel void exclusive_scan(device int32_t* data [[buffer(0)]],
-                           constant const Constants& c [[buffer(1)]],
+kernel void exclusive_scan(device const int32_t* input_data [[buffer(0)]],
+                           device int32_t* output_data [[buffer(1)]],
                            device int32_t* block_sum [[buffer(2)]],
+                           constant const Constants& c [[buffer(3)]],
                            threadgroup int32_t* tg_mem [[threadgroup(0)]],
                            uint tid [[thread_position_in_grid]],
                            uint tgid [[thread_position_in_threadgroup]],
@@ -24,7 +25,7 @@ kernel void exclusive_scan(device int32_t* data [[buffer(0)]],
     // https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch39.html
     const uint count = c.count;
     if (tid < count) {
-        tg_mem[tgid] = data[tid];
+        tg_mem[tgid] = input_data[tid];
     } else {
         tg_mem[tgid] = 0;
     }
@@ -66,13 +67,13 @@ kernel void exclusive_scan(device int32_t* data [[buffer(0)]],
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
     if (tid < count) {
-         data[tid] = tg_mem[tgid];
+         output_data[tid] = tg_mem[tgid];
     }
 }
 
-kernel void add_block_sum(device int32_t* data [[buffer(0)]],
-                          constant const Constants& c[[buffer(1)]],
-                          device int32_t* block_sum [[buffer(2)]],
+kernel void add_block_sum(device const int32_t* block_sum [[buffer(0)]],
+                          device int32_t* data [[buffer(1)]],
+                          constant const Constants& c[[buffer(2)]],
                           uint tid [[thread_position_in_grid]],
                           uint gid [[threadgroup_position_in_grid]]) {
     if (tid < c.count) {

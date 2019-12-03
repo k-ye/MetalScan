@@ -25,6 +25,29 @@ extension DataGenerator {
     }
 }
 
+func toArray(_ buffer: MTLBuffer, _ count: Int) -> [Int32] {
+    let bound = buffer.contents().bindMemory(to: Int32.self, capacity: count)
+    var result = [Int32](repeating: 0, count: count)
+    for i in 0..<count {
+        result[i] = bound[i]
+    }
+    return result
+}
+
+extension ExclusiveScan {
+    func scan(data: [Int32], _ commandQueue: MTLCommandQueue!) -> [Int32] {
+        let count = data.count
+        let commandBuffer = commandQueue.makeCommandBuffer()!
+        let dataBuffer = device.makeBuffer(bytes: data,
+                                           length: count * MemoryLayout<Int32>.stride,
+                                           options: [])!
+        scan(inputBuffer: dataBuffer, outputBuffer: dataBuffer, count: count, commandBuffer)
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+        return toArray(dataBuffer, count)
+    }
+}
+
 class ExclusiveScanTests: XCTestCase {
     private class RandomDataGen : DataGenerator {
         private let max: Int32
@@ -76,6 +99,10 @@ class ExclusiveScanTests: XCTestCase {
         runTestScan(data)
     }
     
+    func testTwoTiers_DiffInputOutput() {
+        let data = dataGen.genData(count: kThreadsPerGroupCount * 128 + 233)
+        runTestScanDiffInputOutput(data)
+    }
     
     func testTwoTiers_DisableBlockSumBuffers() {
         for i in 10...50 {
@@ -100,6 +127,13 @@ class ExclusiveScanTests: XCTestCase {
         dataGen = RandomDataGen(max: 10)
         let data = dataGen.genData(count: kThreadsPerGroupCount * kThreadsPerGroupCount * 4)
         runTestScan(data)
+    }
+    
+    func testThreeTiers_DiffInputOutput() {
+        // Reduce the upper range, otherwise it may overflow
+        dataGen = RandomDataGen(max: 10)
+        let data = dataGen.genData(count: kThreadsPerGroupCount * kThreadsPerGroupCount * 4)
+        runTestScanDiffInputOutput(data)
     }
     
     func testThreeTiers_EnableBlockSumBuffers() {
@@ -136,6 +170,27 @@ class ExclusiveScanTests: XCTestCase {
     private func runTestScan(_ data: [Int32]) {
         let validator = ScanIterator(data)
         let scanResult = es.scan(data: data, commandQueue)
+        for (i, actual) in scanResult.enumerated() {
+            let expected = validator.next()
+            XCTAssertEqual(actual, expected,
+                           "i=\(i) expected=\(expected) actual=\(actual)")
+        }
+        XCTAssertTrue(validator.done)
+    }
+    
+    private func runTestScanDiffInputOutput(_ data: [Int32]) {
+        let validator = ScanIterator(data)
+        let count = data.count
+
+        let bufferLen = count * ExclusiveScan.kDataStride
+        let inputBuffer = device.makeBuffer(bytes: data, length: bufferLen, options: [])!
+        let outputBuffer = device.makeBuffer(length: bufferLen, options: [])!
+        let commandBuffer = commandQueue.makeCommandBuffer()!
+        es.scan(inputBuffer: inputBuffer, outputBuffer: outputBuffer, count: count, commandBuffer)
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+        
+        let scanResult = toArray(outputBuffer, count)
         for (i, actual) in scanResult.enumerated() {
             let expected = validator.next()
             XCTAssertEqual(actual, expected,
